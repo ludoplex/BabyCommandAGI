@@ -96,10 +96,10 @@ def load_data(filename):
 def parse_objective(objective_list: deque) -> str:
     if len(objective_list) == 1:
         return objective_list[0]
-    objective = ""
-    for idx, objective_item in enumerate(objective_list):
-        objective += f"""[Objective {idx + 1}]{objective_item} """
-    return objective
+    return "".join(
+        f"""[Objective {idx + 1}]{objective_item} """
+        for idx, objective_item in enumerate(objective_list)
+    )
 
 objective_list = load_data(OBJECTIVE_LIST_FILE) #deque([])
 if len(objective_list) == 0:
@@ -167,7 +167,9 @@ if LLM_MODEL.startswith("llama"):
         from llama_cpp import Llama
 
         log(f"LLAMA : {LLAMA_MODEL_PATH}" + "\n")
-        assert os.path.exists(LLAMA_MODEL_PATH), "\033[91m\033[1m" + f"Model can't be found." + "\033[0m\033[0m"
+        assert os.path.exists(LLAMA_MODEL_PATH), (
+            "\033[91m\033[1m" + "Model can't be found." + "\033[0m\033[0m"
+        )
 
         CTX_MAX = 1024
         LLAMA_THREADS_NUM = int(os.getenv("LLAMA_THREADS_NUM", 8))
@@ -238,7 +240,7 @@ class SingleTaskListStorage:
         return self.tasks.popleft()
 
     def is_empty(self):
-        return False if self.tasks else True
+        return not self.tasks
 
     def get_tasks(self):
         return self.tasks
@@ -262,10 +264,6 @@ if COOPERATIVE_MODE in ['l', 'local']:
         log("\nReplacing tasks storage: " + "\033[93m\033[1m" + "Ray" + "\033[0m\033[0m")
         executed_tasks_storage = CooperativeTaskListStorage(OBJECTIVE, temp_executed_task_list)
         log("\nReplacing executed tasks storage: " + "\033[93m\033[1m" + "Ray" + "\033[0m\033[0m")
-elif COOPERATIVE_MODE in ['d', 'distributed']:
-    pass
-
-
 if tasks_storage.is_empty() or JOIN_EXISTING_OBJECTIVE:
     log("\033[93m\033[1m" + "\nInitial task:" + "\033[0m\033[0m" + f" {INITIAL_TASK}")
 else:
@@ -598,10 +596,10 @@ Based on the following OBJECTIVE, Before you begin the following single task, pl
 
 # List of most recently executed results
 {ExecutedTaskParser().encode(executed_task_list)}"""
-    
+
     prompt = prompt[:MAX_STRING_LENGTH]
     prompt = TaskParser().close_open_backticks(prompt)
-    prompt += f"""
+    prompt += """
 
 # Example of output
 type: write
@@ -724,11 +722,11 @@ def execution_command(objective: str, command: str, task_list: deque,
         if input_flag == 'f':
             log("\n" + "\033[33m\033[1m" + 'The "f" is pressed and it goes to "feedback".' + "\033[0m\033[0m" + "\n")
             return 'BabyCommandAGI: Complete'
-        
+
         if notification_time + 30 < time.time():
             notification_time = time.time()
             print("\n" + "\033[33m\033[1m" + '"f": go to "feedback"' + "\033[0m\033[0m" + "\n")
-        
+
         # Check for output with a timeout of some minutes
         rlist, wlist, xlist = select.select([pty_master], [], [], 2)
         if rlist or wlist or xlist:
@@ -769,29 +767,26 @@ def execution_command(objective: str, command: str, task_list: deque,
                         print(output_block, end="")
                         std_blocks.append(output_block)
 
-        else:
-            if USER_INPUT_LLM:
-                if time.time() - start_time > 300:
-                    start_time = time.time()
+        elif USER_INPUT_LLM:
+            if time.time() - start_time > 300:
+                start_time = time.time()
 
-                    # Concatenate the output and split it by lines
-                    stdout_lines = "".join(std_blocks).splitlines()
+                # Concatenate the output and split it by lines
+                stdout_lines = "".join(std_blocks).splitlines()
 
-                    # No output received within 5 seconds, call the check_wating_for_response function with the last 3 lines or the entire content
-                    lastlines = stdout_lines[-3:] if len(stdout_lines) >= 3 else stdout_lines
-                    lastlines = "\n".join(lastlines)
-                    input = user_input_for_waiting(objective, lastlines, command,
-                                            "".join(std_blocks), task_list,
-                                            executed_task_list, current_dir)
-                    if input.startswith('BabyCommandAGI: Complete'):
-                        return input
-                    elif input.startswith('BabyCommandAGI: Interruption'):
-                        break
-                    elif input.startswith('BabyCommandAGI: Continue'):
-                        pass
-                    else:
-                        input += '\n'
-                        os.write(pty_master, input.encode())
+                # No output received within 5 seconds, call the check_wating_for_response function with the last 3 lines or the entire content
+                lastlines = stdout_lines[-3:] if len(stdout_lines) >= 3 else stdout_lines
+                lastlines = "\n".join(lastlines)
+                input = user_input_for_waiting(objective, lastlines, command,
+                                        "".join(std_blocks), task_list,
+                                        executed_task_list, current_dir)
+                if input.startswith('BabyCommandAGI: Complete'):
+                    return input
+                elif input.startswith('BabyCommandAGI: Interruption'):
+                    break
+                elif not input.startswith('BabyCommandAGI: Continue'):
+                    input += '\n'
+                    os.write(pty_master, input.encode())
 
     os.close(pty_master)
     pty_master = None
@@ -804,7 +799,7 @@ def execution_command(objective: str, command: str, task_list: deque,
 
     log("\n" + "\033[33m\033[1m" + "[[Output]]" + "\033[0m\033[0m" + "\n\n" +
         result + "\n\n")
-    
+
     return result
 
 def user_input_for_waiting(objective: str, lastlines: str, command: str,
@@ -857,11 +852,14 @@ In cases other than the above: 'BabyCommandAGI: Continue'"""
 def analyze_command_result(result: str) -> str:
     lastString = result[-MAX_COMMAND_RESULT_LENGTH:]
     result_lines = lastString.split('\n')[-100:]  # Extract the last 30 lines
-    for idx, line in enumerate(result_lines):
-        if "fail" in line.lower() or "error" in line.lower():
-            start_idx = max(0, idx - 10)  # Start from 10 lines before the "failure" line
-            return '\n'.join(result_lines[start_idx:])  # Return all lines from the first match
-    return '\n'.join(result_lines)  # If no match, return the last 30 lines
+    return next(
+        (
+            '\n'.join(result_lines[max(0, idx - 10) :])
+            for idx, line in enumerate(result_lines)
+            if "fail" in line.lower() or "error" in line.lower()
+        ),
+        '\n'.join(result_lines),
+    )
 
 def write_file(file_path: str, content: str):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -877,14 +875,11 @@ def user_feedback() -> str:
     response = input()
     log('\n')
 
-    # If the objective has been achieved
     if response.lower() == 'y':
         return 'y'
-    
-    # If the objective has not been achieved
-    else:
-        log("\033[33m\033[1m" + "[[Feedback]]" + "\n\n" + response + "\033[0m\033[0m" + "\n")
-        return response
+
+    log("\033[33m\033[1m" + "[[Feedback]]" + "\n\n" + response + "\033[0m\033[0m" + "\n")
+    return response
 
 
 # Add the initial task if starting new objective

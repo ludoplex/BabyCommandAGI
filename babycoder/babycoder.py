@@ -105,17 +105,13 @@ def execute_command_json(json_string):
     try:
         command_data = json.loads(json_string)
         full_command = command_data.get('command')
-        
+
         process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, cwd='playground')
         stdout, stderr = process.communicate(timeout=60)
 
         return_code = process.returncode
 
-        if return_code == 0:
-            return stdout
-        else:
-            return stderr
-
+        return stdout if return_code == 0 else stderr
     except json.JSONDecodeError as e:
         return f"Error: Unable to decode JSON string: {str(e)}"
     except subprocess.TimeoutExpired:
@@ -127,9 +123,7 @@ def execute_command_json(json_string):
 def execute_command_string(command_string):
     try:
         result = subprocess.run(command_string, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, cwd='playground')
-        output = result.stdout or result.stderr or "No output"
-        return output
-
+        return result.stdout or result.stderr or "No output"
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -478,7 +472,7 @@ def task_human_input_agent(task: str, human_feedback: str):
 
 ## END OF AGENTS ##
 
-print_colored_text(f"****Objective****", color='green')
+print_colored_text("****Objective****", color='green')
 print_char_by_char(OBJECTIVE, 0.00001, 10)
 
 # Create the tasks
@@ -523,7 +517,7 @@ for task in task_json["tasks"]:
     #     continue
     # print_colored_text("*****IMPROVED TASK*****", "green")
     # print_char_by_char(task_description)
-    
+
     # Assign the task to an agent
     task_assigner_recommendation = task_assigner_recommendation_agent(OBJECTIVE, task_description)
     task_agent_output = task_assigner_agent(OBJECTIVE, task_description, task_assigner_recommendation)
@@ -537,74 +531,72 @@ for task in task_json["tasks"]:
         command_executor_output = command_executor_agent(task_description, task["file_path"])
         print_colored_text("*****COMMAND*****", "green")
         print_char_by_char(command_executor_output)
-        
+
         command_execution_output = execute_command_json(command_executor_output)
-    else:
-        # CODE AGENTS
-        if chosen_agent == "code_writer_agent":
-            # Compute embeddings for the codebase
-            # This will recompute embeddings for all files in the 'playground' directory
-            print_colored_text("*****RETRIEVING RELEVANT CODE CONTEXT*****", "yellow")
-            embeddings.compute_repository_embeddings()
-            relevant_chunks = embeddings.get_relevant_code_chunks(task_description, task_isolated_context)
+    elif chosen_agent == "code_writer_agent":
+        # Compute embeddings for the codebase
+        # This will recompute embeddings for all files in the 'playground' directory
+        print_colored_text("*****RETRIEVING RELEVANT CODE CONTEXT*****", "yellow")
+        embeddings.compute_repository_embeddings()
+        relevant_chunks = embeddings.get_relevant_code_chunks(task_description, task_isolated_context)
 
-            current_directory_files = execute_command_string("ls")
-            file_management_output = file_management_agent(OBJECTIVE, task_description, current_directory_files, task["file_path"])
-            print_colored_text("*****FILE MANAGEMENT*****", "yellow")
-            print_char_by_char(file_management_output)
-            file_path = json.loads(file_management_output)["file_path"]
+        current_directory_files = execute_command_string("ls")
+        file_management_output = file_management_agent(OBJECTIVE, task_description, current_directory_files, task["file_path"])
+        print_colored_text("*****FILE MANAGEMENT*****", "yellow")
+        print_char_by_char(file_management_output)
+        file_path = json.loads(file_management_output)["file_path"]
 
-            code_writer_output = code_writer_agent(task_description, task_isolated_context, relevant_chunks)
-            
-            print_colored_text("*****CODE*****", "green")
-            print_char_by_char(code_writer_output)
+        code_writer_output = code_writer_agent(task_description, task_isolated_context, relevant_chunks)
 
-            # Save the generated code to the file the agent selected
-            save_code_to_file(code_writer_output, file_path)
+        print_colored_text("*****CODE*****", "green")
+        print_char_by_char(code_writer_output)
 
-        elif chosen_agent == "code_refactor_agent":
-            # The code refactor agent works with multiple agents:
-            # For each task, the file_management_agent is used to select the file to edit.Then, the 
-            # code_relevance_agent is used to select the relevant code chunks from that filewith the 
-            # goal of finding the code chunk that is most relevant to the task description. This is 
-            # the code chunk that will be edited. Finally, the code_refactor_agent is used to edit 
-            # the code chunk.
+        # Save the generated code to the file the agent selected
+        save_code_to_file(code_writer_output, file_path)
 
-            current_directory_files = execute_command_string("ls")
-            file_management_output = file_management_agent(OBJECTIVE, task_description, current_directory_files, task["file_path"])
-            file_path = json.loads(file_management_output)["file_path"]
+    elif chosen_agent == "code_refactor_agent":
+        # The code refactor agent works with multiple agents:
+        # For each task, the file_management_agent is used to select the file to edit.Then, the 
+        # code_relevance_agent is used to select the relevant code chunks from that filewith the 
+        # goal of finding the code chunk that is most relevant to the task description. This is 
+        # the code chunk that will be edited. Finally, the code_refactor_agent is used to edit 
+        # the code chunk.
 
-            print_colored_text("*****FILE MANAGEMENT*****", "yellow")
-            print_char_by_char(file_management_output)
-            
-            # Split the code into chunks and get the relevance scores for each chunk
-            code_chunks = split_code_into_chunks(file_path, 80)
-            print_colored_text("*****ANALYZING EXISTING CODE*****", "yellow")
-            relevance_scores = []
-            for chunk in code_chunks:
-                score = code_relevance_agent(OBJECTIVE, task_description, chunk["code"])
-                relevance_scores.append(score)
+        current_directory_files = execute_command_string("ls")
+        file_management_output = file_management_agent(OBJECTIVE, task_description, current_directory_files, task["file_path"])
+        file_path = json.loads(file_management_output)["file_path"]
 
-            # Select the most relevant chunk
-            selected_chunk = sorted(zip(relevance_scores, code_chunks), key=lambda x: x[0], reverse=True)[0][1]
+        print_colored_text("*****FILE MANAGEMENT*****", "yellow")
+        print_char_by_char(file_management_output)
 
-            # Refactor the code
-            modified_code_output = code_refactor_agent(task_description, selected_chunk, context_chunks=[selected_chunk], isolated_context=task_isolated_context)
+        # Split the code into chunks and get the relevance scores for each chunk
+        code_chunks = split_code_into_chunks(file_path, 80)
+        print_colored_text("*****ANALYZING EXISTING CODE*****", "yellow")
+        relevance_scores = []
+        for chunk in code_chunks:
+            score = code_relevance_agent(OBJECTIVE, task_description, chunk["code"])
+            relevance_scores.append(score)
 
-            # Extract the start_line and end_line of the selected chunk. This will be used to replace the code in the original file
-            start_line = selected_chunk["start_line"]
-            end_line = selected_chunk["end_line"]
+        # Select the most relevant chunk
+        selected_chunk = sorted(zip(relevance_scores, code_chunks), key=lambda x: x[0], reverse=True)[0][1]
 
-            # Count the number of lines in the modified_code_output
-            modified_code_lines = modified_code_output.count("\n") + 1
-            # Create a dictionary with the necessary information for the refactor_code function
-            modified_code_info = {
-                "start_line": start_line,
-                "end_line": start_line + modified_code_lines - 1,
-                "modified_code": modified_code_output
-            }
-            print_colored_text("*****REFACTORED CODE*****", "green")
-            print_char_by_char(modified_code_output)
+        # Refactor the code
+        modified_code_output = code_refactor_agent(task_description, selected_chunk, context_chunks=[selected_chunk], isolated_context=task_isolated_context)
 
-            # Save the refactored code to the file
-            refactor_code([modified_code_info], file_path)
+        # Extract the start_line and end_line of the selected chunk. This will be used to replace the code in the original file
+        start_line = selected_chunk["start_line"]
+        end_line = selected_chunk["end_line"]
+
+        # Count the number of lines in the modified_code_output
+        modified_code_lines = modified_code_output.count("\n") + 1
+        # Create a dictionary with the necessary information for the refactor_code function
+        modified_code_info = {
+            "start_line": start_line,
+            "end_line": start_line + modified_code_lines - 1,
+            "modified_code": modified_code_output
+        }
+        print_colored_text("*****REFACTORED CODE*****", "green")
+        print_char_by_char(modified_code_output)
+
+        # Save the refactored code to the file
+        refactor_code([modified_code_info], file_path)

@@ -26,16 +26,13 @@ def create_client(
     weaviate_url: str, weaviate_api_key: str, weaviate_use_embedded: bool
 ):
     if weaviate_use_embedded:
-        client = weaviate.Client(embedded_options=EmbeddedOptions())
-    else:
-        auth_config = (
-            weaviate.auth.AuthApiKey(api_key=weaviate_api_key)
-            if weaviate_api_key
-            else None
-        )
-        client = weaviate.Client(weaviate_url, auth_client_secret=auth_config)
-
-    return client
+        return weaviate.Client(embedded_options=EmbeddedOptions())
+    auth_config = (
+        weaviate.auth.AuthApiKey(api_key=weaviate_api_key)
+        if weaviate_api_key
+        else None
+    )
+    return weaviate.Client(weaviate_url, auth_client_secret=auth_config)
 
 
 class WeaviateResultsStorage:

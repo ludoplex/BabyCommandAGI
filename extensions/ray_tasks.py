@@ -36,7 +36,7 @@ class CooperativeTaskListStorageActor:
         return self.tasks.popleft()
 
     def is_empty(self):
-        return False if self.tasks else True
+        return not self.tasks
 
     def get_tasks(self):
         return self.tasks

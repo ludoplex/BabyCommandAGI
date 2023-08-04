@@ -20,8 +20,8 @@ class Embeddings:
         self.workspace_path = workspace_path
         openai.api_key = os.getenv("OPENAI_API_KEY", "")
 
-        self.DOC_EMBEDDINGS_MODEL = f"text-embedding-ada-002"
-        self.QUERY_EMBEDDINGS_MODEL = f"text-embedding-ada-002"
+        self.DOC_EMBEDDINGS_MODEL = "text-embedding-ada-002"
+        self.QUERY_EMBEDDINGS_MODEL = "text-embedding-ada-002"
 
         self.SEPARATOR = "\n* "
 
@@ -162,7 +162,7 @@ class Embeddings:
 
     def save_doc_embeddings_to_csv(self, doc_embeddings: dict, df: pd.DataFrame, csv_filepath: str):
         # Get the dimensionality of the embedding vectors from the first element in the doc_embeddings dictionary
-        if len(doc_embeddings) == 0:
+        if not doc_embeddings:
             return
 
         EMBEDDING_DIM = len(list(doc_embeddings.values())[0])
@@ -192,16 +192,20 @@ class Embeddings:
         Return the list of document sections, sorted by relevance in descending order.
         """
         query_embedding = self.get_query_embedding(query)
-        
-        document_similarities = sorted([
-            (self.vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
-        ], reverse=True)
-        
-        return document_similarities
+
+        return sorted(
+            [
+                (self.vector_similarity(query_embedding, doc_embedding), doc_index)
+                for doc_index, doc_embedding in contexts.items()
+            ],
+            reverse=True,
+        )
     
     def load_embeddings(self, fname: str) -> dict[tuple[str, str], list[float]]:       
         df = pd.read_csv(fname, header=0)
-        max_dim = max([int(c) for c in df.columns if c != "filePath" and c != "lineCoverage"])
+        max_dim = max(
+            int(c) for c in df.columns if c not in ["filePath", "lineCoverage"]
+        )
         return {
             (r.filePath, r.lineCoverage): [r[str(i)] for i in range(max_dim + 1)] for _, r in df.iterrows()
         }

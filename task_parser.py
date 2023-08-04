@@ -10,16 +10,15 @@ class TaskParser:
         parsed_data = []
 
         for item in data:
-            item = "type:" + item.strip()
+            item = f"type:{item.strip()}"
             type, path, content = self._split_data(item)
-            dict = {}
-            dict["type"] = type
+            dict = {"type": type}
             if path is not None:
                 dict["path"] = path
             dict["content"] = content
             parsed_data.append(dict)
 
-        if len(parsed_data) == 0:
+        if not parsed_data:
             raise ValueError("No valid items found")
 
         return parsed_data
@@ -49,7 +48,7 @@ class TaskParser:
 
         if type_line is None:
             raise ValueError("No type line found")
-        if len(content_lines) == 0 and has_content == False:
+        if not content_lines and has_content == False:
             raise ValueError("No content found")
 
         content = "\n".join(content_lines)
